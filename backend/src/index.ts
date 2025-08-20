@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import path from 'path';
 import { DataSource } from 'typeorm';
 import { ormConfig } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
@@ -15,6 +16,7 @@ import projectRoutes from './routes/projects';
 import punchlistRoutes from './routes/punchlist';
 import userRoutes from './routes/users';
 import reportRoutes from './routes/reports';
+import photoRoutes from './routes/photos';
 
 dotenv.config();
 
@@ -28,11 +30,17 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.'
 });
 
-// Middleware
+// Middleware (IN CORRECT ORDER)
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: [
+    'http://localhost:3000', 
+    'http://localhost:5173',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(compression());
 app.use(limiter);
@@ -45,14 +53,23 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// API routes
+// Serve uploaded files statically with CORS headers (BEFORE API routes)
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
+
+// API routes (AFTER static files)
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/punchlist', punchlistRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/photos', photoRoutes);
 
-// Error handling middleware
+// Error handling middleware (LAST)
 app.use(notFoundHandler);
 app.use(errorHandler);
 
@@ -75,5 +92,3 @@ async function startServer() {
 startServer();
 
 export default app;
-
-
